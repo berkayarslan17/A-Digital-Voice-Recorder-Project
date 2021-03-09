@@ -31,6 +31,8 @@ uint8_t Audio_Value;
 uint8_t frequency;
 uint16_t TRACK_ADDR = 0x0;
 int element=0;
+static volatile int buf1 = 0;
+static volatile int buf2 = 0;
 
 // Flags
 _Bool Record_Flag = 0;
@@ -60,9 +62,12 @@ void Setup_TIM1(void);
 void Setup_TIM2(void);
 void Setup_TIM3(void);
 void Setup_GPIO(void);
+void sysclock_64M(void);
 
 int main(void)
 {
+	//sysclock_64M();
+
 	Setup_I2C();
 
     Setup_ADC();
@@ -77,12 +82,54 @@ int main(void)
 
 	Setup_TIM16();
 
+	Setup_TIM17();
+
     start_conversion();
 
     while(1){}
 
     return 0;
 }
+
+void sysclock_64M()
+{
+	RCC->CR |= (1U << 8);				// Enable HSI16
+	while(!(RCC->CR & (1U << 10)));		// Wait for crystal
+
+	FLASH->ACR |= (1U << 8);			// CPU Prefetch enable
+	FLASH->ACR &= ~(1U << 0);			// Flash memory access latency; reset
+	FLASH->ACR &= ~(1U << 1);			// Flash memory access latency; reset
+	FLASH->ACR &= ~(1U << 2);			// Flash memory access latency; reset
+	FLASH->ACR |= (1U << 0);			// Flash memory access latency; set to 1 wait state
+
+	RCC->PLLCFGR |= (2U << 0);			// Select HSI16 for pll source
+	RCC->PLLCFGR |= (0U << 4);			// PLLM division /1
+	RCC->PLLCFGR &= ~(0x7FU << 8);		// PLL frequency multiplication factor N; reset
+	RCC->PLLCFGR |= (0x8U << 8);		// PLL frequency multiplication factor N; x8
+	RCC->PLLCFGR &= ~(1U << 29);		// PLL VCO division factor R for PLLRCLK clock output; reset
+	RCC->PLLCFGR &= ~(1U << 30);		// PLL VCO division factor R for PLLRCLK clock output; reset
+	RCC->PLLCFGR &= ~(1U << 31);		// PLL VCO division factor R for PLLRCLK clock output; reset
+	RCC->PLLCFGR |= (1U << 29);			// PLL VCO division factor R for PLLRCLK clock output; /2
+    RCC->PLLCFGR |= (1U << 28);			// PLLRCLK clock output enable
+
+	RCC->CFGR &= ~(1U << 11);			// AHB prescaler to /1
+    RCC->CFGR &= ~(1U << 14);			// APB prescaler to /1
+
+    RCC->CR |= (1U << 24);				// PLLON: PLL enable
+    while(!(RCC->CR & (1U << 25)));		// Wait for PLL to stable
+
+    RCC->CFGR &= ~(1U << 0);			// System clock switch to; reset
+    RCC->CFGR &= ~(1U << 1);			// System clock switch to; reset
+    RCC->CFGR |= (2U << 0);			// System clock switch to; PLLRCLK
+
+    while(!(RCC->CFGR & (2U << 3)));	// Wait for PLL to stable
+
+    SystemCoreClockUpdate();
+
+    SysTick_Config(SystemCoreClock);
+
+}
+
 //Transition between digits
 void display_number(int value_num, int digit_num)
 {
@@ -131,7 +178,7 @@ void Change_State(int num1, int num2, int num3, int num4)
 	Fourth_Digit_Value = num4;
 }
 
-void random_read_I2C(uint8_t devAddr,uint16_t memAddr, uint8_t* data, int size)
+void random_read_I2C(uint8_t devAddr, uint16_t memAddr, uint8_t* data, int size)
 {
 	I2C1->CR2 = 0;
 	I2C1->CR2 |= (uint32_t)(devAddr << 1);
@@ -219,78 +266,9 @@ void Setup_ADC(void)
 	ADC1->CR |= (1U << 0);				/* Enable ADC */
 	while (!(ADC1->ISR & (1 << 0)));	/* Until ADC ready */
 
-	NVIC_SetPriority(ADC1_IRQn, 2);
+	NVIC_SetPriority(ADC1_IRQn, 1);
 	NVIC_EnableIRQ(ADC1_IRQn);
 }
-
-void ADC_COMP_IRQHandler(void)
-{
-	//Write to eeprom for five seconds
-	if (Record_Flag == 1)
-	{
-
-		Audio_Value = (uint8_t) (ADC1->DR);
-		Audio_Data[element] = Audio_Value;
-		element++;
-
-		if(element == 112)
-		{
-			write_memory_I2C(EEPROM1_ADDR, TRACK_ADDR, &Audio_Data, 112);
-			TRACK_ADDR += 112;
-			element = 0;
-		}
-
-		if(seconds == 0)
-		{
-			Record_Flag = 0;
-			TRACK_ADDR = 0;
-		}
-	}
-	//Read from eeprom for five seconds
-	if(Read_Flag == 1)
-		{
-			Audio_Value = ((uint8_t)Recorded_Audio_Data[element]);
-			TIM2->CCR2 = Audio_Value;
-			element++;
-
-			if(element == 112)
-			{
-				random_read_I2C(EEPROM1_ADDR, TRACK_ADDR, &Recorded_Audio_Data, 112);
-				delay(10000);
-				TRACK_ADDR += 112;
-				element=0;
-			}
-
-			if(seconds == 0)
-			{
-				Read_Flag = 0;
-				TRACK_ADDR = 0;
-			}
-		}
-	//Clear the bytes in eeprom for five seconds
-	if (Delete_Flag == 1)
-	{
-		Audio_Data[element] = 0;
-		Recorded_Audio_Data[element] = 0;
-		element++;
-
-		if(element == 112)
-		{
-			write_memory_I2C(EEPROM1_ADDR, TRACK_ADDR, &Audio_Data, 112);
-			TRACK_ADDR += 112;
-			element = 0;
-		}
-
-		if(seconds == 0)
-		{
-			Delete_Flag = 0;
-			TRACK_ADDR = 0;
-		}
-	}
-		ADC1->ISR &= (1U << 2); /* Clear Interrupt */
-}
-
-
 
 void Setup_I2C (void)
 {
@@ -341,11 +319,11 @@ void Setup_TIM1(void)
 	TIM1->CR1 = 0;
 	TIM1->CR1 |= (1 << 7);
 	TIM1->CNT = 0;
-	TIM1->PSC = 9;
-	TIM1->ARR = 1600;
+	TIM1->PSC = 0;
+	TIM1->ARR = 2000;
 	TIM1->DIER |= (1 << 0);
 	TIM1->CR1 |= (1 << 0);
-	NVIC_SetPriority(TIM1_BRK_UP_TRG_COM_IRQn, 0);
+	NVIC_SetPriority(TIM1_BRK_UP_TRG_COM_IRQn, 1);
 	NVIC_EnableIRQ(TIM1_BRK_UP_TRG_COM_IRQn);
 }
 
@@ -377,11 +355,12 @@ void Setup_TIM2(void)
 	 * 				PWM duty =CCR2 / ARR
 	 */
 	//TIM2->PSC = 0;
-	TIM2->ARR = 255;	// almost 60khz
+	TIM2->ARR = 255;	// almost 65khz
 
 	TIM2->EGR |= (1 << 0); 			/* UPDATE GENERATION */
 
 	TIM2->CR1 |= (1U << 0);
+
 }
 
 void Setup_TIM3(void)
@@ -411,37 +390,124 @@ void Setup_TIM16(void)
 
 	TIM16->CNT = 0;
 	TIM16->PSC = 9999;
-	TIM16->ARR = 1600;
+	TIM16->ARR = 6400;
 
 	TIM16->DIER |= (1U << 0);
 	TIM16->CR1 |= (1U << 0);
 
-	NVIC_SetPriority(TIM16_IRQn, 1);
+	NVIC_SetPriority(TIM16_IRQn, 2);
 	NVIC_EnableIRQ(TIM16_IRQn);
+}
+
+void Setup_TIM17(void)
+{
+	RCC->APBENR2 |= (1U << 18);
+
+	TIM17->CR1 = 0;
+	TIM17->CR1 |= (1U << 7);
+
+	TIM17->CNT = 0;
+	TIM17->PSC = 0;
+	TIM17->ARR = 1000;
+
+	TIM17->DIER |= (1U << 0);
+	TIM17->CR1 |= (1U << 0);
+
+	NVIC_SetPriority(TIM17_IRQn, 2);
+	NVIC_EnableIRQ(TIM17_IRQn);
 }
 
 void TIM1_BRK_UP_TRG_COM_IRQHandler(void)
 {
-	prevent_bounce = 0;
+	if (Read_Flag == 1)
+	{
+		if(TRACK_ADDR == 0xFA00)
+		{
+			Read_Flag = 0;
+			TRACK_ADDR = 0;
+			element = 0;
+		}
 
-	// Start State shows the ID number
-	if(Start_Flag == 1) {Change_State(1, 7, 3, 0);}
+		if(element == 32)
+		{
+			random_read_I2C(EEPROM1_ADDR, TRACK_ADDR, &Audio_Data, 32);
+			delay(1000);
+			TRACK_ADDR += 32;
+			element = 0;
+			TIM2->CCR2 = Audio_Data[element];
+		}
 
-	// Record state shows rcd and counts down from 5 seconds indicating the recording.
-	else if(Record_Flag == 1) {Change_State(R, C, D, seconds);}
-
-	//PLAYBACK state where the 7SD shows PLb.
-	else if(Read_Flag == 1) {Change_State(P, L, B, seconds);}
-
-	//Clear state where the 7SD shows clr and clear the EEPROM.
-	else if (Delete_Flag == 1) {Change_State(C, L, R, seconds);}
-
-	// IDLE State
-	else {Change_State(1, D, L, E);}
-
-	Display_SSD();
-
+		else if(element < 32)
+		{
+			TIM2->CCR2 = Audio_Data[element];
+			element++;
+		}
+	}
 	TIM1->SR &= ~(1U << 0);
+}
+
+void ADC_COMP_IRQHandler(void)
+{
+	//Write to eeprom for five seconds
+	if (Record_Flag == 1)
+	{
+
+		if(TRACK_ADDR == 0xFA00)	// If the EEPROM's memory is full.
+		{
+			Record_Flag = 0;
+			TRACK_ADDR = 0;
+			element = 0;
+		}
+
+		Audio_Value = (uint8_t) (ADC1->DR);
+		Audio_Data[element] = Audio_Value;
+		element++;
+		if(element == 32)
+		{
+			write_memory_I2C(EEPROM1_ADDR, TRACK_ADDR, &Audio_Data, 32);
+			element = 0;
+			TRACK_ADDR += 32;
+		}
+	}
+//	//Read from eeprom for five seconds
+//	if(Read_Flag == 1)
+//	{
+//	    TIM2->CCR2 = Audio_Value;
+//	    Audio_Value = ((uint8_t)Recorded_Audio_Data[element]);
+//		element++;
+//
+//		random_read_I2C(EEPROM1_ADDR, TRACK_ADDR, (uint8_t *)&Recorded_Audio_Data, 1);
+//		TRACK_ADDR += 1;
+//		element = 0;
+//
+//		if(seconds == 0)
+//		{
+//			element = 0;
+//			Read_Flag = 0;
+//			TRACK_ADDR = 0;
+//		}
+//	}
+	//Clear the bytes in eeprom's memory.
+	if (Delete_Flag == 1)
+	{
+		if(TRACK_ADDR == 0xFA00)	// If the the TRACK_ADDR reached its full value.
+		{
+			Delete_Flag = 0;
+			TRACK_ADDR = 0;
+			element = 0;
+		}
+
+		Audio_Data[element] = 0;
+		Recorded_Audio_Data[element] = 0;
+		element++;
+		if(element == 32)
+		{
+			write_memory_I2C(EEPROM1_ADDR, TRACK_ADDR, &Audio_Data, 32);
+			TRACK_ADDR += 32;
+			element = 0;
+		}
+	}
+		ADC1->ISR &= (1U << 2); /* Clear Interrupt */
 }
 
 void TIM16_IRQHandler(void)
@@ -459,6 +525,29 @@ void TIM16_IRQHandler(void)
 	TIM16->SR &= ~(1U << 0);
 }
 
+void TIM17_IRQHandler(void)
+{
+	prevent_bounce = 0;
+
+	// Start State shows the ID number
+	if(Start_Flag == 1) {Change_State(1, D, L, E);}
+
+	// Record state shows rcd and counts down from 5 seconds indicating the recording.
+	else if(Record_Flag == 1) {Change_State(R, C, D, seconds);}
+
+	//PLAYBACK state where the 7SD shows PLb.
+	else if(Read_Flag == 1) {Change_State(P, L, B, seconds);}
+
+	//Clear state where the 7SD shows clr and clear the EEPROM.
+	else if (Delete_Flag == 1) {Change_State(C, L, R, seconds);}
+
+	// IDLE State
+	else {Change_State(1, D, L, E);}
+
+	Display_SSD();
+
+	TIM2->SR &= ~(1U << 0);
+}
 
 void Setup_GPIO(void){
 
