@@ -62,11 +62,12 @@ void Setup_TIM16(void);
 void Setup_TIM17(void);
 void Setup_GPIO(void);
 void sysclock_64M(void);
-
+void Display_SSD(void);
+void Change_State(int, int, int, int);
 
 int main(void)
 {
-	//sysclock_64M();
+	sysclock_64M();
 
 	Setup_I2C();
 
@@ -86,7 +87,7 @@ int main(void)
 
     start_conversion();
 
-    while(1){}
+    while(1) {}
 
     return 0;
 }
@@ -324,7 +325,7 @@ void Setup_TIM1(void)
 	TIM1->CR1 |= (1 << 7);
 	TIM1->CNT = 0;
 	TIM1->PSC = 0;
-	TIM1->ARR = 2000;
+	TIM1->ARR = 8000;
 	TIM1->DIER |= (1 << 0);
 	TIM1->CR1 |= (1 << 0);
 	NVIC_SetPriority(TIM1_BRK_UP_TRG_COM_IRQn, 1);
@@ -359,7 +360,7 @@ void Setup_TIM2(void)
 	 * 				PWM duty =CCR2 / ARR
 	 */
 	//TIM2->PSC = 0;
-	TIM2->ARR = 255;	// almost 65khz
+	TIM2->ARR = 255;	// almost 250khz
 
 	TIM2->EGR |= (1 << 0); 			/* UPDATE GENERATION */
 
@@ -379,7 +380,7 @@ void Setup_TIM3(void)
 	TIM3->CR2 |= (2U << 4);		//MMS REGISTER UPDATE MODE
 
 	TIM3->PSC = 0;
-	TIM3->ARR = 2000;	//8khz
+	TIM3->ARR = 8000;	//8khz
 
 	TIM3->DIER |= (1U << 0);
 	TIM3->CR1 |= (1U << 0);
@@ -411,8 +412,8 @@ void Setup_TIM17(void)
 	TIM17->CR1 |= (1U << 7);
 
 	TIM17->CNT = 0;
-	TIM17->PSC = 5;
-	TIM17->ARR = 20;
+	TIM17->PSC = 9;
+	TIM17->ARR = 6400;
 
 	TIM17->DIER |= (1U << 0);
 	TIM17->CR1 |= (1U << 0);
@@ -517,13 +518,13 @@ void ADC_COMP_IRQHandler(void)
 void TIM16_IRQHandler(void)
 {
 	//Count back when record flag is open
-	if(Record_Flag == 1 && seconds > 0) {seconds--;}
+	if(Record_Flag == 1 && seconds >= 0) {seconds++;}
 	//Count back when read flag is open
-	else if (Read_Flag == 1 && seconds > 0) {seconds--;}
+	else if (Read_Flag == 1 && seconds >= 0) {seconds++;}
 	//Count back when delete flag is open
-	else if (Delete_Flag == 1 && seconds > 0) {seconds--;}
+	else if (Delete_Flag == 1 && seconds >= 0) {seconds++;}
 	// change state to idle state
-	else {Delete_Flag = 0; Record_Flag = 0; Read_Flag = 0;}
+	else {/*Delete_Flag = 0; Record_Flag = 0; Read_Flag = 0;*/}
 
 
 	TIM16->SR &= ~(1U << 0);
@@ -537,13 +538,13 @@ void TIM17_IRQHandler(void)
 	if(Start_Flag == 1) {Change_State(1, D, L, E);}
 
 	// Record state shows rcd and counts down from 5 seconds indicating the recording.
-	else if(Record_Flag == 1) {Change_State(R, C, D, seconds);}
+	else if(Record_Flag == 1) {Change_State(R, C, R, D);}
 
 	//PLAYBACK state where the 7SD shows PLb.
-	else if(Read_Flag == 1) {Change_State(P, L, B, seconds);}
+	else if(Read_Flag == 1) {Change_State(P, L, B, C);}
 
 	//Clear state where the 7SD shows clr and clear the EEPROM.
-	else if (Delete_Flag == 1) {Change_State(C, L, R, seconds);}
+	else if (Delete_Flag == 1) {Change_State(C, L, E, R);}
 
 	// IDLE State
 	else {Change_State(1, D, L, E);}
@@ -634,17 +635,17 @@ void EXTI0_1_IRQHandler(void)
     clearRowsKeypad();
     GPIOA -> ODR ^= (1U << 15);  //PA15
     if((GPIOB ->IDR & (1U << 0)) && prevent_bounce == 0)
-    {Record_Flag = 0; Start_Flag = 0; Read_Flag = 1; seconds = 5; prevent_bounce = 1;}
+    {Record_Flag = 1; Start_Flag = 0; Read_Flag = 0; seconds = 5; prevent_bounce = 1;}
     GPIOA -> ODR ^= (1U << 15);  //PA15
 
     GPIOB -> ODR ^= (1U << 1);  //PB1
     if((GPIOB ->IDR & (1U << 0)) && prevent_bounce == 0)
-    {number = 5; prevent_bounce = 1;}
+    {}
     GPIOB -> ODR ^= (1U << 1);  //PB1
 
     GPIOA -> ODR ^= (1U << 10);  //PA10
     if((GPIOB ->IDR & (1U << 0)) && prevent_bounce == 0)
-    {number = 8; prevent_bounce = 1;}
+    {Delete_Flag = 1; Start_Flag = 0; seconds = 5; prevent_bounce = 1;}
     GPIOA -> ODR ^= (1U << 10);  //PA10
 
     EXTI -> RPR1 |= (1U << 0);
@@ -657,7 +658,7 @@ void EXTI2_3_IRQHandler(void)
     clearRowsKeypad();
     GPIOA -> ODR ^= (1U << 15);  //PA15
     if((GPIOB ->IDR & (1U << 2)) && prevent_bounce == 0)
-    {Delete_Flag = 1; Start_Flag = 0; seconds = 5; prevent_bounce = 1;}
+    {Record_Flag = 0; Start_Flag = 0; Read_Flag = 1; seconds = 5; prevent_bounce = 1;}
     GPIOA -> ODR ^= (1U << 15);  //PA15
 
     GPIOB -> ODR ^= (1U << 1);  //PB1
@@ -680,7 +681,7 @@ void EXTI4_15_IRQHandler(void)
     clearRowsKeypad();
     GPIOA -> ODR ^= (1U << 15);  //PA15
     if((GPIOA ->IDR & (1U << 9)) && prevent_bounce == 0)
-    {Record_Flag = 1; Start_Flag = 0; Read_Flag = 0; seconds = 5; prevent_bounce = 1;}
+    {}
     GPIOA -> ODR ^= (1U << 15);  //PA15
 
     GPIOB -> ODR ^= (1U << 1);  //PB1
