@@ -71,7 +71,7 @@ Task 4. Make digital loopback. ✓
 
 Task 5. Write the audio data to the EEPROM. ✓
 
-Task 6. Read the audio data from the EEPROM. X
+Task 6. Read the audio data from the EEPROM. ✓
 
 Task 7. When the program starts, arrange the 7SD to the START State. ✓ 
 
