@@ -55,14 +55,14 @@ int E = 16;
 void Setup_I2C (void);
 void start_conversion(void);
 void Setup_ADC(void);
-void TIM3_IRQHandler(void);
-void EXTI0_1_IRQHandler(void);
-void EXTI4_15_IRQHandler(void);
 void Setup_TIM1(void);
 void Setup_TIM2(void);
 void Setup_TIM3(void);
+void Setup_TIM16(void);
+void Setup_TIM17(void);
 void Setup_GPIO(void);
 void sysclock_64M(void);
+
 
 int main(void)
 {
@@ -180,16 +180,19 @@ void Change_State(int num1, int num2, int num3, int num4)
 
 void random_read_I2C(uint8_t devAddr, uint16_t memAddr, uint8_t* data, int size)
 {
+	uint8_t regAddrH = ((uint8_t) ((0xFF00 & memAddr) >> 8));
+	uint8_t regAddrL = ((uint8_t) (0x00FF & memAddr));
+
 	I2C1->CR2 = 0;
 	I2C1->CR2 |= (uint32_t)(devAddr << 1);
 	I2C1->CR2 |= (2U << 16);	//Number of bytes
 	I2C1->CR2 |= (1U << 13);	//Generate Start
 
 	while(!(I2C1->ISR & (1 << 1)));
-	I2C1->TXDR = (uint32_t)(memAddr >> 8);
+	I2C1->TXDR = (uint32_t) regAddrH;
 
 	while(!(I2C1->ISR & (1 << 1)));
-	I2C1->TXDR = (uint32_t)(memAddr & 0xFF);
+	I2C1->TXDR = (uint32_t) regAddrL;
 
 	while(!(I2C1->ISR & (1 << 6)));	//until the transmission complete
 
@@ -197,13 +200,14 @@ void random_read_I2C(uint8_t devAddr, uint16_t memAddr, uint8_t* data, int size)
 	I2C1->CR2 |= (uint32_t)(devAddr << 1);
 	I2C1->CR2 |= (1U << 10);	//Read mode
 	I2C1->CR2 |= (uint32_t)(size << 16);	//Number of bytes
+	I2C1->CR2 |= (1U << 15); // NACK
 	I2C1->CR2 |= (1U << 25);	//AUTOEND
 	I2C1->CR2 |= (1U << 13);	//Generate start
 
 	for(int i = 0;  i < size; i++)
 	{
 		while(!(I2C1->ISR & (1 << 2)));
-		data[i++] = (uint8_t)I2C1->RXDR;
+		data[i] = (uint8_t)I2C1->RXDR;
 	}
 
 }
@@ -308,8 +312,8 @@ void Setup_I2C (void)
 
 	    I2C1->CR1 |= (1U << 0);
 
-	    NVIC_SetPriority(I2C1_IRQn,1);
-	    NVIC_EnableIRQ(I2C1_IRQn);
+//	    NVIC_SetPriority(I2C1_IRQn,1);
+//	    NVIC_EnableIRQ(I2C1_IRQn);
 }
 
 void Setup_TIM1(void)
@@ -407,8 +411,8 @@ void Setup_TIM17(void)
 	TIM17->CR1 |= (1U << 7);
 
 	TIM17->CNT = 0;
-	TIM17->PSC = 0;
-	TIM17->ARR = 1000;
+	TIM17->PSC = 5;
+	TIM17->ARR = 20;
 
 	TIM17->DIER |= (1U << 0);
 	TIM17->CR1 |= (1U << 0);
@@ -430,8 +434,8 @@ void TIM1_BRK_UP_TRG_COM_IRQHandler(void)
 
 		if(element == 32)
 		{
-			random_read_I2C(EEPROM1_ADDR, TRACK_ADDR, &Audio_Data, 32);
-			delay(1000);
+			random_read_I2C(EEPROM1_ADDR, TRACK_ADDR, Audio_Data, 32);
+			//delay(1000);
 			TRACK_ADDR += 32;
 			element = 0;
 			TIM2->CCR2 = Audio_Data[element];
@@ -464,7 +468,7 @@ void ADC_COMP_IRQHandler(void)
 		element++;
 		if(element == 32)
 		{
-			write_memory_I2C(EEPROM1_ADDR, TRACK_ADDR, &Audio_Data, 32);
+			write_memory_I2C(EEPROM1_ADDR, TRACK_ADDR, Audio_Data, 32);
 			element = 0;
 			TRACK_ADDR += 32;
 		}
@@ -502,7 +506,7 @@ void ADC_COMP_IRQHandler(void)
 		element++;
 		if(element == 32)
 		{
-			write_memory_I2C(EEPROM1_ADDR, TRACK_ADDR, &Audio_Data, 32);
+			write_memory_I2C(EEPROM1_ADDR, TRACK_ADDR, Audio_Data, 32);
 			TRACK_ADDR += 32;
 			element = 0;
 		}
@@ -546,7 +550,7 @@ void TIM17_IRQHandler(void)
 
 	Display_SSD();
 
-	TIM2->SR &= ~(1U << 0);
+	TIM17->SR &= ~(1U << 0);
 }
 
 void Setup_GPIO(void){
