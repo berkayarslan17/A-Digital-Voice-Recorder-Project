@@ -9,8 +9,6 @@
 #include "ssdfunctions.h"
 #include "keypadfunctions.h"
 
-		// Global Variables
-
 //Keypad Variables
 _Bool prevent_bounce = 0;
 
