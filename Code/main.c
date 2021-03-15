@@ -9,7 +9,7 @@
 #include "ssdfunctions.h"
 #include "keypadfunctions.h"
 
-//Keypad Variables
+//Keypad Variable
 _Bool prevent_bounce = 0;
 
 //SSD Variables
