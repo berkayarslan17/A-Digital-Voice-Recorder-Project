@@ -31,8 +31,6 @@ uint8_t Audio_Value;
 uint8_t frequency;
 uint16_t TRACK_ADDR = 0x0;
 int element=0;
-static volatile int buf1 = 0;
-static volatile int buf2 = 0;
 
 // Flags
 _Bool Record_Flag = 0;
