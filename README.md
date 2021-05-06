@@ -111,15 +111,6 @@ How Was This Challenges Solved:
 2) This difficulty has been solved by using both the filtering circuit and the appropriate PWM and sampling frequency. The potentiometer used in filtering was brought in the 50% band, and the PWM frequency was set to be 60kHz and the sampling frequency to be 8kHz. The audio data is taken from ADC COMP Handler and given to the TIM2 CCR2 register.
 3) To solve this difficulty, dummy delays used in the display function have been removed. Using a different algorithm, a different digit is turned on every interrupt  and when the handler speed is increased, the brightness difference between digits is eliminated.
 
-Unsolved Difficulites:
-1) Writing and reading the data from EEPROM properly in five seconds.
-2) Understandable recording to the EEPROM.
-What is thought to be the root of the problem?
-1) It is predicted that the source of this difficulty may be wrongly given priority between interrupt handlers, improper ARR and PSC values or inefficient use of ADC_COMP_IRQ handler.
-2) It is anticipated that writing data quickly and reading it slowly may be one of the sources of this problem.
 
 ### Conclusion and Comments
-In conclusion, a digital voice recorder could not have been designed. In the designing phase, experience has been gained about how to make PWM filter for the 0.5W speaker and using the filter with LM386 audio amplifier. Using this filter, The digital loopback was achieved with proper PWM and sampling frequency. Although the data can be written to the EEPROM and read, an understandable sound could not be produced from the speaker. During the display to 7SD phase, 4 states have been created. (Start, Record, Playback and IDLE state) Due to the flags, the program translates the states.
-
-
-
+In conclusion, a digital voice recorder have been designed. In the designing phase, experience has been gained about how to make PWM filter for the 0.5W speaker and using the filter with LM386 audio amplifier. Using this filter, The digital loopback was achieved with proper PWM and sampling frequency. After the data can be written to the EEPROM and read, an understandable sound produced from the speaker. During the display to 7SD phase, 4 states have been created. (Start, Record, Playback and IDLE state) Due to the flags, the program translated the states.
